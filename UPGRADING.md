@@ -3,7 +3,8 @@
 ## Zero-downtime upgrade
 
 1. Note current chart version: `helm list -n owlpane`
-2. `helm upgrade owlpane-agent ./deploy/helm/owlpane-agent -n owlpane -f your-values.yaml`
+2. `helm upgrade owlpane-agent oci://ghcr.io/balaji-singh/owlpane-agent --version <chart-version> -n owlpane -f your-values.yaml --reset-values`
+   (Pin the same `--version` you used at install; see `helm list -n owlpane`.)
 3. DaemonSet rolls node agents one node at a time; cluster collector Deployment rolls with `maxUnavailable: 0` when configured.
 4. Confirm new metrics in **Kubernetes** view within 5 minutes.
 
