@@ -17,6 +17,14 @@ data:
         metrics:
           k8s.container.status.state: { enabled: true }
           k8s.container.status.reason: { enabled: true }
+          # Autoscaling page and the platform HPA table. Names match collector 0.161 k8sclusterreceiver.
+          k8s.hpa.current_replicas: { enabled: true }
+          k8s.hpa.desired_replicas: { enabled: true }
+          k8s.hpa.min_replicas: { enabled: true }
+          k8s.hpa.max_replicas: { enabled: true }
+          # Optional in 0.161. The console reads these names, not the older *.capacity / *.phase gauges.
+          k8s.persistentvolumeclaim.storage.capacity: { enabled: true }
+          k8s.persistentvolumeclaim.status.phase: { enabled: true }
       {{- if .Values.clusterCollector.events }}
       k8s_objects:
         auth_type: serviceAccount

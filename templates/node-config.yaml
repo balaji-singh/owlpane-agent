@@ -17,7 +17,7 @@ data:
         collection_interval: {{ .Values.nodeAgent.collectionInterval }}
         endpoint: "https://${env:K8S_NODE_NAME}:10250"
         insecure_skip_verify: {{ .Values.nodeAgent.kubeletInsecureSkipVerify }}
-        metric_groups: [node, pod, container]
+        metric_groups: [node, pod, container, volume]
       {{- if .Values.logs.enabled }}
       filelog:
         include: [/var/log/pods/*/*/*.log]

@@ -8,5 +8,5 @@ metadata:
 data:
   README: |
     Install Trivy Operator from upstream Helm, then export OTLP logs to your Owlpane ingest
-    endpoint with owlpane.finding.source=trivy and the attributes documented in
+    endpoint with owlpane.finding.source=trivy, owlpane.finding.kind=vulnerability, and the attributes documented in
     docs/ops/kubernetes-security-ingest.md.

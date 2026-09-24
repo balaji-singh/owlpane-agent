@@ -24,7 +24,8 @@ image:
 
 # Node agent (DaemonSet): node, pod and container metrics from the kubelet, plus an OTLP receiver
 # that applications on the node can send to.
-# kubeletstats uses metric_groups [node, pod, container] — network IO gauges (k8s.pod.network*, k8s.node.network*)
+# kubeletstats uses metric_groups [node, pod, container, volume] — volume emits k8s.volume.capacity
+# (Storage). node emits k8s.node.filesystem.usage. Network IO gauges stay on the node and pod groups.
 # power byte totals on Kubernetes → Map topology edges when present.
 nodeAgent:
   enabled: true

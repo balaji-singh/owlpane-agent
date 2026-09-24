@@ -17,8 +17,8 @@ helm install owlpane-agent ./deploy/helm/owlpane-agent -n owlpane \
 
 | Piece | Kind | Does |
 |---|---|---|
-| node agent | DaemonSet | node, pod and container metrics from the kubelet; an OTLP receiver applications can send to; optional container logs |
-| cluster collector | Deployment (1) | workload state, restarts, node conditions, Kubernetes events, and optional Service/Ingress object snapshots for routing in the console |
+| cluster collector | Deployment (1) | workload state, HorizontalPodAutoscaler gauges (`k8s.hpa.current_replicas`, `desired_replicas`, `min_replicas`, `max_replicas`), PersistentVolumeClaim capacity and phase, restarts, node conditions, Kubernetes events, and optional Service/Ingress object snapshots for routing in the console |
+| node agent | DaemonSet | node, pod, container, and volume metrics from the kubelet (`k8s.volume.capacity`, `k8s.node.filesystem.usage`); an OTLP receiver applications can send to; optional container logs |
 
 ## What it is allowed to do
 
