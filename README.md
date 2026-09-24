@@ -9,7 +9,7 @@ metrics arrive with `k8s.cluster.name` and your project key.
 ```bash
 kubectl create namespace owlpane
 kubectl -n owlpane create secret generic owlpane-ingest --from-literal=key=owl_ing_YOUR_KEY
-helm install owlpane-agent ./deploy/helm/owlpane-agent -n owlpane \
+helm install owlpane-agent oci://ghcr.io/balaji-singh/owlpane-agent --version 0.1.1 -n owlpane \
   --set endpoint=https://ingest.example.com --set cluster.name=production-eu
 ```
 
