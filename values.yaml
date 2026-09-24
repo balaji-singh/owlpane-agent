@@ -1,0 +1,145 @@
+# Where to send data and how to authenticate. The key is read from a Secret you create; the chart
+# never contains a credential. Create it with:
+#   kubectl -n owlpane create secret generic owlpane-ingest --from-literal=key=owl_ing_...
+endpoint: ""                  # required, e.g. https://ingest.example.com
+ingestKeySecret:
+  name: owlpane-ingest
+  key: key
+
+cluster:
+  name: ""                    # required: shown as k8s.cluster.name
+environment: production
+
+# Install profile (documentation + recommended --set bundles). Not applied automatically — pick flags when installing.
+# minimal:    node metrics + OTLP relay only (set clusterCollector.enabled=false, objectSnapshots=false)
+# demo:       use values-demo-workloads.yaml with owlpane-demo-workloads for ingress paths + synthetic flows
+# standard:   default below — metrics, events, routing snapshots, security posture watches
+# security-full: standard + securityIntegrations.enabled=true (optional Trivy / policy report relay; needs CRDs)
+profile: standard
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.161.0"
+  pullPolicy: IfNotPresent
+
+# Node agent (DaemonSet): node, pod and container metrics from the kubelet, plus an OTLP receiver
+# that applications on the node can send to.
+# kubeletstats uses metric_groups [node, pod, container] — network IO gauges (k8s.pod.network*, k8s.node.network*)
+# power byte totals on Kubernetes → Map topology edges when present.
+nodeAgent:
+  enabled: true
+  kubeletInsecureSkipVerify: false   # set true only for clusters with self-signed kubelet certificates
+  collectionInterval: 30s
+  otlpHostPort: false                # expose 4317/4318 on the node for local pods (host network ports)
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  tolerations:
+    - operator: Exists
+
+# Cluster collector (one replica): cluster state (workloads, restarts, conditions) and Kubernetes events.
+clusterCollector:
+  enabled: true
+  events: true
+  # Watch Kubernetes objects (metadata only in logs) for routing, labels, TLS and Gateway API in the console.
+  objectSnapshots: true
+  watchPods: true
+  # Requires cert-manager.io CRDs; if false, collector starts on vanilla clusters (Docker Desktop, kind).
+  watchCertManager: false
+  # Requires gateway.networking.k8s.io CRDs.
+  watchGatewayApi: false
+  # RBAC bindings, NetworkPolicies, Namespace PSS labels, and pod securityContext (with watchPods).
+  watchSecurityPosture: true
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 384Mi }
+
+# Container logs from every pod on the node. Off by default: it needs read access to the node's log
+# directory and the container runtime's files, and logs often hold personal data. Enable knowingly.
+logs:
+  enabled: false
+  excludeNamespaces: [kube-system, owlpane]
+
+# Beyond attributes/scrub: SQL literals, emails, bearer tokens, card-like numbers and
+# password/token/secret values removed from trace and log free text before it leaves this node.
+# On by default (secure by default); a redaction counter metric proves the control ran. See
+# docs/03-security-and-privacy.md.
+redaction:
+  enabled: true
+
+# Kubernetes metadata attached to telemetry. Labels and annotations are off by default because they
+# sometimes carry secrets or personal data; list the ones you want.
+metadata:
+  labels: []       # e.g. [{tagName: team, key: team, from: pod}]
+  annotations: []
+
+networkPolicy:
+  enabled: false
+
+rbac:
+  create: true
+serviceAccount:
+  create: true
+  name: ""
+
+# Database integrations: a small extra collector that connects to your databases and reports their health
+# (connections, cache hit ratio, replication lag, memory, evictions). It needs network access to them and a
+# read-only account. Passwords come from Secrets you create; the chart never contains a credential.
+#   postgres: create a role with `GRANT pg_monitor TO owlpane;`
+#   redis: an ACL user limited to `+info +ping` is enough.
+# Optional CVE and policy findings relay (subchart). Off by default; enable only with profile security-full.
+securityIntegrations:
+  enabled: false
+  trivyOperator:
+    enabled: false
+  policyReports:
+    enabled: false
+
+# Phase C network collector. Off by default — see docs/adr/0008-network-ebpf-collector.md
+# conntrack: reads host /proc connection tables and posts owlpane.flow.* (no packet payloads).
+# beyla: optional Grafana Beyla DaemonSet for eBPF network metrics (no TLS body decrypt).
+networkCollector:
+  enabled: false
+  image:
+    repository: curlimages/curl
+    tag: "8.11.1"
+    pullPolicy: IfNotPresent
+  intervalSeconds: 30
+  captureFilters:
+    namespaces: []   # documented for Beyla; conntrack is node-scoped
+    ports: []
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 128Mi }
+  otlp:
+    serviceName: owlpane-network
+  beyla:
+    enabled: false
+    image:
+      repository: grafana/beyla
+      tag: "2.2.4"
+      pullPolicy: IfNotPresent
+
+integrations:
+  enabled: false
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
+  collectionInterval: 60s
+  postgres: []
+  mysql: []
+  mongodb: []
+  kafka: []
+  rabbitmq: []
+  nginx: []
+  # Cloud: scrape a Prometheus-format exporter (YACE, stackdriver_exporter, azure_metrics_exporter, …)
+  cloudScrapes: []
+  #  - name: orders-db                 # shown as the service name
+  #    endpoint: orders-db.default.svc:5432
+  #    databases: []                   # empty = all
+  #    tls: { insecure: false }        # set insecure: true only for in-cluster databases without TLS
+  #    secret: { name: orders-db-monitor, userKey: username, passwordKey: password }
+  redis: []
+  #  - name: session-cache
+  #    endpoint: session-cache.default.svc:6379
+  #    secret: { name: session-cache-monitor, passwordKey: password }   # omit for no password

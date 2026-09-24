@@ -1,0 +1,6 @@
+apiVersion: v2
+name: owlpane-demo-workloads
+description: Optional demo apps (ingress, services, netpol, cert-manager) for Owlpane Kubernetes UI — not part of SaaS config
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,12 @@
+# Documentation only — not applied by default. See docs/ops/kubernetes-security-ingest.md
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-trivy-ingest-example
+  annotations:
+    owlpane.io/description: "Example Trivy Operator + OTLP mapping for Owlpane security ingest"
+data:
+  README: |
+    Install Trivy Operator from upstream Helm, then export OTLP logs to your Owlpane ingest
+    endpoint with owlpane.finding.source=trivy and the attributes documented in
+    docs/ops/kubernetes-security-ingest.md.

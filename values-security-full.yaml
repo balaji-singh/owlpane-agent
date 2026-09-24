@@ -1,0 +1,19 @@
+# Example values for profile: security-full
+#   helm upgrade --install owlpane-agent ./deploy/helm/owlpane-agent -f values-security-full.yaml \
+#     --set endpoint=https://ingest.example.com --set cluster.name=my-cluster
+
+profile: security-full
+
+clusterCollector:
+  objectSnapshots: true
+  watchPods: true
+  watchSecurityPosture: true
+  watchCertManager: false
+  watchGatewayApi: false
+
+securityIntegrations:
+  enabled: true
+  policyReports:
+    enabled: true
+  trivyOperator:
+    enabled: false

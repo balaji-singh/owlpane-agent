@@ -1,0 +1,143 @@
+{{- $ns := .Values.namespace }}
+{{- if .Values.messaging.kafka.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.messaging.kafka.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-messaging: kafka
+    owlpane.io/demo-messaging-port: {{ .Values.messaging.kafka.port | quote }}
+spec:
+  selector:
+    app: {{ .Values.messaging.kafka.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: kafka
+      port: {{ .Values.messaging.kafka.port }}
+      targetPort: kafka
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.messaging.kafka.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.messaging.kafka.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-messaging: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.messaging.kafka.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.messaging.kafka.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-messaging: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: "{{ .Values.messaging.kafka.image.repository }}:{{ .Values.messaging.kafka.image.tag }}"
+          imagePullPolicy: {{ .Values.messaging.kafka.image.pullPolicy }}
+          env:
+            - name: KAFKA_CFG_NODE_ID
+              value: "0"
+            - name: KAFKA_CFG_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+              value: "0@{{ .Values.messaging.kafka.serviceName }}:9093"
+            - name: KAFKA_CFG_LISTENERS
+              value: "PLAINTEXT://:{{ .Values.messaging.kafka.port }},CONTROLLER://:9093"
+            - name: KAFKA_CFG_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://{{ .Values.messaging.kafka.serviceName }}.{{ $ns }}.svc.cluster.local:{{ .Values.messaging.kafka.port }}"
+            - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: ALLOW_PLAINTEXT_LISTENER
+              value: "yes"
+          ports:
+            - { name: kafka, containerPort: {{ .Values.messaging.kafka.port }} }
+            - { name: controller, containerPort: 9093 }
+          resources:
+            {{- toYaml .Values.messaging.resources | nindent 12 }}
+{{- end }}
+{{- if .Values.messaging.rabbitmq.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.messaging.rabbitmq.secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-messaging: rabbitmq
+type: Opaque
+stringData:
+  username: {{ .Values.messaging.rabbitmq.username | quote }}
+  password: {{ .Values.messaging.rabbitmq.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.messaging.rabbitmq.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-messaging: rabbitmq
+    owlpane.io/demo-messaging-port: {{ .Values.messaging.rabbitmq.managementPort | quote }}
+spec:
+  selector:
+    app: {{ .Values.messaging.rabbitmq.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: amqp
+      port: {{ .Values.messaging.rabbitmq.port }}
+      targetPort: amqp
+    - name: management
+      port: {{ .Values.messaging.rabbitmq.managementPort }}
+      targetPort: management
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.messaging.rabbitmq.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.messaging.rabbitmq.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-messaging: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.messaging.rabbitmq.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.messaging.rabbitmq.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-messaging: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: "{{ .Values.messaging.rabbitmq.image.repository }}:{{ .Values.messaging.rabbitmq.image.tag }}"
+          imagePullPolicy: {{ .Values.messaging.rabbitmq.image.pullPolicy }}
+          ports:
+            - { name: amqp, containerPort: {{ .Values.messaging.rabbitmq.port }} }
+            - { name: management, containerPort: {{ .Values.messaging.rabbitmq.managementPort }} }
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.messaging.rabbitmq.secretName }}, key: username } }
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom: { secretKeyRef: { name: {{ .Values.messaging.rabbitmq.secretName }}, key: password } }
+          resources:
+            {{- toYaml .Values.messaging.resources | nindent 12 }}
+{{- end }}

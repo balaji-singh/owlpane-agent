@@ -1,0 +1,206 @@
+{{- if .Values.integrations.enabled }}
+{{- $has := or (gt (len .Values.integrations.postgres) 0) (gt (len .Values.integrations.redis) 0) (gt (len .Values.integrations.mysql) 0) (gt (len .Values.integrations.mongodb) 0) (gt (len .Values.integrations.kafka) 0) (gt (len .Values.integrations.rabbitmq) 0) (gt (len .Values.integrations.nginx) 0) (gt (len .Values.integrations.cloudScrapes) 0) }}
+{{- if not $has }}{{ fail "integrations.enabled is true but no integration targets are configured" }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-integrations
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    receivers:
+      {{- range $i, $p := .Values.integrations.postgres }}
+      postgresql/pg{{ $i }}:
+        endpoint: {{ $p.endpoint | quote }}
+        transport: tcp
+        username: ${env:PG_USER_{{ $i }}}
+        password: ${env:PG_PASSWORD_{{ $i }}}
+        {{- with $p.databases }}
+        databases: {{ toJson . }}
+        {{- end }}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+        tls:
+          insecure: {{ dig "tls" "insecure" false $p }}
+      {{- end }}
+      {{- range $i, $r := .Values.integrations.redis }}
+      redis/r{{ $i }}:
+        endpoint: {{ $r.endpoint | quote }}
+        {{- if $r.secret }}
+        password: ${env:REDIS_PASSWORD_{{ $i }}}
+        {{- end }}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+      {{- end }}
+      {{- range $i, $m := .Values.integrations.mysql }}
+      mysql/my{{ $i }}:
+        endpoint: {{ $m.endpoint | quote }}
+        username: ${env:MYSQL_USER_{{ $i }}}
+        password: ${env:MYSQL_PASSWORD_{{ $i }}}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+      {{- end }}
+      {{- range $i, $m := .Values.integrations.mongodb }}
+      mongodb/mg{{ $i }}:
+        hosts:
+          - endpoint: {{ $m.endpoint | quote }}
+        username: ${env:MONGO_USER_{{ $i }}}
+        password: ${env:MONGO_PASSWORD_{{ $i }}}
+        {{- if $m.directConnection }}
+        direct_connection: true
+        {{- end }}
+        {{- with $m.authSource }}
+        auth_source: {{ . | quote }}
+        {{- end }}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+        tls:
+          insecure: {{ dig "tls" "insecure" false $m }}
+      {{- end }}
+      {{- range $i, $k := .Values.integrations.kafka }}
+      kafkametrics/kf{{ $i }}:
+        brokers: {{ toJson $k.brokers }}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+      {{- end }}
+      {{- range $i, $q := .Values.integrations.rabbitmq }}
+      rabbitmq/rq{{ $i }}:
+        endpoint: {{ $q.endpoint | quote }}
+        username: ${env:RABBIT_USER_{{ $i }}}
+        password: ${env:RABBIT_PASSWORD_{{ $i }}}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+      {{- end }}
+      {{- range $i, $n := .Values.integrations.nginx }}
+      nginx/nx{{ $i }}:
+        endpoint: {{ $n.endpoint | quote }}
+        collection_interval: {{ $.Values.integrations.collectionInterval }}
+      {{- end }}
+      {{- range $i, $c := .Values.integrations.cloudScrapes }}
+      prometheus/cloud{{ $i }}:
+        config:
+          scrape_configs:
+            - job_name: {{ $c.name | quote }}
+              scrape_interval: {{ $.Values.integrations.collectionInterval }}
+              static_configs:
+                - targets: {{ toJson $c.targets }}
+      {{- end }}
+    processors:
+      memory_limiter: { check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20 }
+      {{- range $i, $p := .Values.integrations.postgres }}
+      resource/pg{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $p.name | quote }}, action: upsert }
+          - { key: db.system, value: "postgresql", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $r := .Values.integrations.redis }}
+      resource/r{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $r.name | quote }}, action: upsert }
+          - { key: db.system, value: "redis", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $m := .Values.integrations.mysql }}
+      resource/my{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $m.name | quote }}, action: upsert }
+          - { key: db.system, value: "mysql", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $m := .Values.integrations.mongodb }}
+      resource/mg{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $m.name | quote }}, action: upsert }
+          - { key: db.system, value: "mongodb", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $k := .Values.integrations.kafka }}
+      resource/kf{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $k.name | quote }}, action: upsert }
+          - { key: messaging.system, value: "kafka", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $q := .Values.integrations.rabbitmq }}
+      resource/rq{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $q.name | quote }}, action: upsert }
+          - { key: messaging.system, value: "rabbitmq", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $n := .Values.integrations.nginx }}
+      resource/nx{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $n.name | quote }}, action: upsert }
+          - { key: web.engine, value: "nginx", action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      {{- range $i, $c := .Values.integrations.cloudScrapes }}
+      resource/cloud{{ $i }}:
+        attributes:
+          - { key: service.name, value: {{ $c.name | quote }}, action: upsert }
+          - { key: cloud.provider, value: {{ $c.provider | quote }}, action: upsert }
+          - { key: k8s.cluster.name, value: {{ $.Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ $.Values.environment | quote }}, action: insert }
+      {{- end }}
+      batch: { send_batch_size: 1000, timeout: 10s }
+    exporters:
+      {{- include "owlpane.exporter" . | nindent 6 }}
+    extensions:
+      health_check: { endpoint: "0.0.0.0:13133" }
+    service:
+      extensions: [health_check]
+      telemetry: { metrics: { level: none } }
+      pipelines:
+        {{- range $i, $p := .Values.integrations.postgres }}
+        metrics/pg{{ $i }}:
+          receivers: [postgresql/pg{{ $i }}]
+          processors: [memory_limiter, resource/pg{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $r := .Values.integrations.redis }}
+        metrics/r{{ $i }}:
+          receivers: [redis/r{{ $i }}]
+          processors: [memory_limiter, resource/r{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $m := .Values.integrations.mysql }}
+        metrics/my{{ $i }}:
+          receivers: [mysql/my{{ $i }}]
+          processors: [memory_limiter, resource/my{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $m := .Values.integrations.mongodb }}
+        metrics/mg{{ $i }}:
+          receivers: [mongodb/mg{{ $i }}]
+          processors: [memory_limiter, resource/mg{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $k := .Values.integrations.kafka }}
+        metrics/kf{{ $i }}:
+          receivers: [kafkametrics/kf{{ $i }}]
+          processors: [memory_limiter, resource/kf{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $q := .Values.integrations.rabbitmq }}
+        metrics/rq{{ $i }}:
+          receivers: [rabbitmq/rq{{ $i }}]
+          processors: [memory_limiter, resource/rq{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $n := .Values.integrations.nginx }}
+        metrics/nx{{ $i }}:
+          receivers: [nginx/nx{{ $i }}]
+          processors: [memory_limiter, resource/nx{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+        {{- range $i, $c := .Values.integrations.cloudScrapes }}
+        metrics/cloud{{ $i }}:
+          receivers: [prometheus/cloud{{ $i }}]
+          processors: [memory_limiter, resource/cloud{{ $i }}, batch]
+          exporters: [otlp_http]
+        {{- end }}
+{{- end }}

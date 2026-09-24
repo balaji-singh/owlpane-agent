@@ -1,0 +1,22 @@
+Owlpane demo workloads installed in namespace {{ .Values.namespace }}.
+
+Console: pick cluster.name from your owlpane-agent install (not hardcoded in SaaS).
+  - Map / Network: Ingress {{ .Values.ingress.host }} → demo-storefront, demo-api
+  - Platform: Helm release "{{ include "owlpane-demo.releaseName" . }}"
+  - Security / Network policies: {{ .Values.networkPolicy.enabled }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress (requires a controller with class "{{ .Values.ingress.className }}"):
+  curl -H 'Host: {{ .Values.ingress.host }}' http://<ingress-ip>/
+{{- end }}
+
+Upgrade agent for full UI (or -f ../owlpane-agent/values-demo-workloads.yaml):
+  objectSnapshots=true, watchSecurityPosture=true
+  optional: watchCertManager=true (if certManager.enabled), watchGatewayApi=true
+
+{{- if .Values.flowForwarder.enabled }}
+Synthetic network flows: demo-flow-forwarder → {{ .Values.flowForwarder.otlpEndpoint }} (ServiceName owlpane-network)
+{{- else }}
+Enable flowForwarder.* or re-run install-demo-workloads.sh with OWLPANE_INGEST_KEY for Network → Flows data.
+{{- end }}

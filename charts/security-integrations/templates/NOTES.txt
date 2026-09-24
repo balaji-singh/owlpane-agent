@@ -1,0 +1,9 @@
+Owlpane security integrations (optional).
+
+Enable policy report watches on the main agent:
+  securityIntegrations.policyReports.enabled=true
+
+Install Trivy Operator separately, then configure it to emit OTLP logs with
+owlpane.finding.source=trivy to your Owlpane ingest endpoint.
+
+See docs/ops/kubernetes-security-ingest.md

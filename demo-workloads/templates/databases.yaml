@@ -1,0 +1,267 @@
+{{- /*
+  Optional in-cluster databases for exercising Infrastructure → Databases onboarding.
+  Enable per-engine in values; endpoints are standard K8s DNS (not referenced from Owlpane SaaS).
+*/ -}}
+{{- $ns := .Values.namespace -}}
+{{- if .Values.databases.postgres.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.databases.postgres.secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: postgresql
+type: Opaque
+stringData:
+  username: {{ .Values.databases.postgres.username | quote }}
+  password: {{ .Values.databases.postgres.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.databases.postgres.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: postgresql
+    owlpane.io/demo-database-port: {{ .Values.databases.postgres.port | quote }}
+spec:
+  selector:
+    app: {{ .Values.databases.postgres.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.databases.postgres.port }}
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.databases.postgres.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.databases.postgres.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.databases.postgres.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.databases.postgres.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-database: postgresql
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.databases.postgres.image.repository }}:{{ .Values.databases.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.databases.postgres.image.pullPolicy }}
+          ports: [{ name: postgres, containerPort: {{ .Values.databases.postgres.port }} }]
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.databases.postgres.database | quote }}
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.postgres.secretName }}, key: username } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.postgres.secretName }}, key: password } }
+          resources:
+            {{- toYaml .Values.databases.resources | nindent 12 }}
+{{- end }}
+{{- if .Values.databases.mysql.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.databases.mysql.secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mysql
+type: Opaque
+stringData:
+  username: {{ .Values.databases.mysql.username | quote }}
+  password: {{ .Values.databases.mysql.password | quote }}
+  root-password: {{ .Values.databases.mysql.rootPassword | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.databases.mysql.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mysql
+    owlpane.io/demo-database-port: {{ .Values.databases.mysql.port | quote }}
+spec:
+  selector:
+    app: {{ .Values.databases.mysql.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mysql
+      port: {{ .Values.databases.mysql.port }}
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.databases.mysql.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.databases.mysql.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.databases.mysql.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.databases.mysql.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-database: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: "{{ .Values.databases.mysql.image.repository }}:{{ .Values.databases.mysql.image.tag }}"
+          imagePullPolicy: {{ .Values.databases.mysql.image.pullPolicy }}
+          ports: [{ name: mysql, containerPort: {{ .Values.databases.mysql.port }} }]
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.mysql.secretName }}, key: root-password } }
+            - name: MYSQL_DATABASE
+              value: {{ .Values.databases.mysql.database | quote }}
+            - name: MYSQL_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.mysql.secretName }}, key: username } }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.mysql.secretName }}, key: password } }
+          resources:
+            {{- toYaml .Values.databases.resources | nindent 12 }}
+{{- end }}
+{{- if .Values.databases.mongodb.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.databases.mongodb.secretName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mongodb
+type: Opaque
+stringData:
+  username: {{ .Values.databases.mongodb.username | quote }}
+  password: {{ .Values.databases.mongodb.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.databases.mongodb.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mongodb
+    owlpane.io/demo-database-port: {{ .Values.databases.mongodb.port | quote }}
+spec:
+  selector:
+    app: {{ .Values.databases.mongodb.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mongodb
+      port: {{ .Values.databases.mongodb.port }}
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.databases.mongodb.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.databases.mongodb.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-database: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.databases.mongodb.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.databases.mongodb.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-database: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: "{{ .Values.databases.mongodb.image.repository }}:{{ .Values.databases.mongodb.image.tag }}"
+          imagePullPolicy: {{ .Values.databases.mongodb.image.pullPolicy }}
+          ports: [{ name: mongodb, containerPort: {{ .Values.databases.mongodb.port }} }]
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.mongodb.secretName }}, key: username } }
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.databases.mongodb.secretName }}, key: password } }
+          resources:
+            {{- toYaml .Values.databases.resources | nindent 12 }}
+{{- end }}
+{{- if .Values.databases.redis.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.databases.redis.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-integration: redis
+    owlpane.io/demo-database: redis
+    owlpane.io/demo-database-port: {{ .Values.databases.redis.port | quote }}
+spec:
+  selector:
+    app: {{ .Values.databases.redis.serviceName }}
+    {{- include "owlpane-demo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: redis
+      port: {{ .Values.databases.redis.port }}
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.databases.redis.serviceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ .Values.databases.redis.serviceName }}
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+    owlpane.io/demo-integration: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.databases.redis.serviceName }}
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.databases.redis.serviceName }}
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+        owlpane.io/demo-integration: redis
+        owlpane.io/demo-database: redis
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.databases.redis.image.repository }}:{{ .Values.databases.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.databases.redis.image.pullPolicy }}
+          ports: [{ name: redis, containerPort: {{ .Values.databases.redis.port }} }]
+          resources:
+            {{- toYaml .Values.databases.resources | nindent 12 }}
+{{- end }}

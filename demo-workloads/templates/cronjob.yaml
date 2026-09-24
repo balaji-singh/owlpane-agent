@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-nightly-sync
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  schedule: "0 3 * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: demo-cron
+            {{- include "owlpane-demo.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              command: ["/bin/sh", "-c", "echo sync complete"]
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}

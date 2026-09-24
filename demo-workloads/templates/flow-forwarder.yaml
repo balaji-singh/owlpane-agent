@@ -1,0 +1,116 @@
+{{- if .Values.flowForwarder.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-flow-forwarder
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+data:
+  emit-flows.sh: |
+    #!/bin/sh
+    set -eu
+    NS="{{ .Values.namespace }}"
+    CLUSTER="{{ required "flowForwarder.clusterName is required when flowForwarder.enabled" .Values.flowForwarder.clusterName }}"
+    ENV="{{ .Values.flowForwarder.environment }}"
+    ENDPOINT="{{ required "flowForwarder.otlpEndpoint is required when flowForwarder.enabled" .Values.flowForwarder.otlpEndpoint }}"
+    ENDPOINT="${ENDPOINT%/}/v1/logs"
+    INTERVAL="{{ .Values.flowForwarder.intervalSeconds }}"
+    KEY="${OWLPANE_INGEST_KEY:?missing ingest key}"
+
+    nano() { echo "$(date +%s)000000000"; }
+
+    # OTLP/HTTP JSON logs — ServiceName owlpane-network + owlpane.flow.* (see docs/ops/kubernetes-network-ingest.md)
+    post_batch() {
+      local ts records
+      ts="$(nano)"
+      records="$1"
+      curl -sfS -X POST "$ENDPOINT" \
+        -H "Authorization: Bearer ${KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"resourceLogs\":[{\"resource\":{\"attributes\":[
+          {\"key\":\"service.name\",\"value\":{\"stringValue\":\"owlpane-network\"}},
+          {\"key\":\"k8s.cluster.name\",\"value\":{\"stringValue\":\"${CLUSTER}\"}},
+          {\"key\":\"deployment.environment.name\",\"value\":{\"stringValue\":\"${ENV}\"}}
+        ]},\"scopeLogs\":[{\"scope\":{\"name\":\"owlpane-demo-flow-forwarder\"},\"logRecords\":[${records}]}]}]}"
+    }
+
+    flow_record() {
+      local src dst proto bytes verdict srcip dstip sport dport sni
+      src="$1"; dst="$2"; proto="$3"; bytes="$4"; verdict="$5"
+      srcip="$6"; dstip="$7"; sport="$8"; dport="$9"; sni="${10}"
+      printf '{"timeUnixNano":"%s","severityText":"INFO","body":{"stringValue":"demo flow"},"attributes":[' \
+        "$(nano)"
+      printf '{"key":"owlpane.flow.source","value":{"stringValue":"demo"}},'
+      printf '{"key":"owlpane.flow.src.namespace","value":{"stringValue":"%s"}},' "$NS"
+      printf '{"key":"owlpane.flow.src.service","value":{"stringValue":"%s"}},' "$src"
+      printf '{"key":"owlpane.flow.src.ip","value":{"stringValue":"%s"}},' "$srcip"
+      printf '{"key":"owlpane.flow.src.port","value":{"stringValue":"%s"}},' "$sport"
+      printf '{"key":"owlpane.flow.dst.namespace","value":{"stringValue":"%s"}},' "$NS"
+      printf '{"key":"owlpane.flow.dst.service","value":{"stringValue":"%s"}},' "$dst"
+      printf '{"key":"owlpane.flow.dst.ip","value":{"stringValue":"%s"}},' "$dstip"
+      printf '{"key":"owlpane.flow.dst.port","value":{"stringValue":"%s"}},' "$dport"
+      printf '{"key":"owlpane.flow.protocol","value":{"stringValue":"%s"}},' "$proto"
+      if [ -n "$sni" ]; then
+        printf '{"key":"owlpane.flow.tls.sni","value":{"stringValue":"%s"}},' "$sni"
+      fi
+      printf '{"key":"owlpane.flow.bytes","value":{"stringValue":"%s"}},' "$bytes"
+      printf '{"key":"owlpane.flow.verdict","value":{"stringValue":"%s"}}' "$verdict"
+      printf ']}'
+    }
+
+    tick=0
+    while true; do
+      # Rotate byte totals slightly so Flows / topology edges look alive.
+      b=$((4096 + tick % 5 * 512))
+      d=$((256 + tick % 3 * 128))
+      records="$(flow_record demo-storefront demo-api TCP "$b" allowed 10.8.0.11 10.8.0.12 44000 8080 api.owlpane-demo.svc),$(flow_record demo-api demo-worker TCP "$((b / 2))" allowed 10.8.0.12 10.8.0.13 44001 9092 ""),$(flow_record demo-worker demo-api TCP 512 allowed 10.8.0.13 10.8.0.12 44002 8080 ""),$(flow_record demo-api demo-storefront TCP 1024 allowed 10.8.0.12 10.8.0.11 8080 44000 ""),$(flow_record demo-worker demo-storefront TCP "$d" denied 10.8.0.13 10.8.0.11 44003 8080 "")"
+      post_batch "$records" || echo "flow forwarder POST failed (check otlpEndpoint and ingest key)" >&2
+      tick=$((tick + 1))
+      sleep "$INTERVAL"
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-flow-forwarder
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: demo-flow-forwarder
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-flow-forwarder
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: demo-flow-forwarder
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: forwarder
+          image: "{{ .Values.flowForwarder.image.repository }}:{{ .Values.flowForwarder.image.tag }}"
+          imagePullPolicy: {{ .Values.flowForwarder.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/emit-flows.sh"]
+          env:
+            - name: OWLPANE_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.flowForwarder.ingestKeySecret.name }}
+                  key: {{ .Values.flowForwarder.ingestKeySecret.key }}
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts, readOnly: true }
+          resources:
+            {{- toYaml .Values.flowForwarder.resources | nindent 12 }}
+      volumes:
+        - name: scripts
+          configMap:
+            name: demo-flow-forwarder
+            defaultMode: 0555
+{{- end }}

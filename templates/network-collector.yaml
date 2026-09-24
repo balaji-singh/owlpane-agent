@@ -1,0 +1,172 @@
+{{- if .Values.networkCollector.enabled }}
+{{- include "owlpane.require" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-network-collector
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+data:
+  emit-flows.sh: |
+    #!/bin/sh
+    set -eu
+    CLUSTER="{{ .Values.cluster.name }}"
+    ENV="{{ .Values.environment }}"
+    ENDPOINT="{{ .Values.endpoint | trimSuffix "/" }}/v1/logs"
+    INTERVAL="{{ .Values.networkCollector.intervalSeconds }}"
+    KEY="${OWLPANE_INGEST_KEY:?missing ingest key}"
+    NODE="${K8S_NODE_NAME:-node}"
+    PORTS="{{ join " " .Values.networkCollector.captureFilters.ports }}"
+
+    nano() { echo "$(date +%s)000000000"; }
+
+    hex_ip() {
+      h="$1"
+      a=$(printf %s "$h" | cut -c7-8)
+      b=$(printf %s "$h" | cut -c5-6)
+      c=$(printf %s "$h" | cut -c3-4)
+      d=$(printf %s "$h" | cut -c1-2)
+      printf "%d.%d.%d.%d" "$((0x$a))" "$((0x$b))" "$((0x$c))" "$((0x$d))"
+    }
+
+    port_ok() {
+      [ -z "$PORTS" ] && return 0
+      for p in $PORTS; do
+        [ "$p" = "$1" ] && return 0
+      done
+      return 1
+    }
+
+    post_batch() {
+      records="$1"
+      [ -n "$records" ] || return 0
+      curl -sfS -X POST "$ENDPOINT" \
+        -H "Authorization: Bearer ${KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{\"resourceLogs\":[{\"resource\":{\"attributes\":[
+          {\"key\":\"service.name\",\"value\":{\"stringValue\":\"owlpane-network\"}},
+          {\"key\":\"k8s.cluster.name\",\"value\":{\"stringValue\":\"${CLUSTER}\"}},
+          {\"key\":\"k8s.node.name\",\"value\":{\"stringValue\":\"${NODE}\"}},
+          {\"key\":\"deployment.environment.name\",\"value\":{\"stringValue\":\"${ENV}\"}}
+        ]},\"scopeLogs\":[{\"scope\":{\"name\":\"owlpane-network-collector\"},\"logRecords\":[${records}]}]}]}"
+    }
+
+    flow_record() {
+      srcip="$1"; sport="$2"; dstip="$3"; dport="$4"; proto="$5"; bytes="$6"
+      printf '{"timeUnixNano":"%s","severityText":"INFO","body":{"stringValue":"conntrack flow"},"attributes":[' "$(nano)"
+      printf '{"key":"owlpane.flow.source","value":{"stringValue":"conntrack"}},'
+      printf '{"key":"owlpane.flow.src.namespace","value":{"stringValue":"host"}},'
+      printf '{"key":"owlpane.flow.src.service","value":{"stringValue":"%s"}},' "$NODE"
+      printf '{"key":"owlpane.flow.src.ip","value":{"stringValue":"%s"}},' "$srcip"
+      printf '{"key":"owlpane.flow.src.port","value":{"stringValue":"%s"}},' "$sport"
+      printf '{"key":"owlpane.flow.dst.namespace","value":{"stringValue":"external"}},'
+      printf '{"key":"owlpane.flow.dst.service","value":{"stringValue":"%s"}},' "$dstip"
+      printf '{"key":"owlpane.flow.dst.ip","value":{"stringValue":"%s"}},' "$dstip"
+      printf '{"key":"owlpane.flow.dst.port","value":{"stringValue":"%s"}},' "$dport"
+      printf '{"key":"owlpane.flow.protocol","value":{"stringValue":"%s"}},' "$proto"
+      printf '{"key":"owlpane.flow.bytes","value":{"stringValue":"%s"}},' "$bytes"
+      printf '{"key":"owlpane.flow.verdict","value":{"stringValue":"allowed"}}]}'
+    }
+
+    emit_tcp() {
+      file="$1"
+      [ -r "$file" ] || return 0
+      while read -r laddr rem state; do
+        [ "$state" = "0A" ] && continue
+        lip=$(hex_ip "${laddr%%:*}")
+        lport=$((0x${laddr##*:}))
+        rip=$(hex_ip "${rem%%:*}")
+        rport=$((0x${rem##*:}))
+        [ "$rip" = "0.0.0.0" ] && continue
+        port_ok "$rport" || continue
+        key="${lip}:${lport}-${rip}:${rport}"
+        case " $SEEN " in *" $key "*) continue ;; esac
+        SEEN="$SEEN $key"
+        rec=$(flow_record "$lip" "$lport" "$rip" "$rport" TCP 1)
+        if [ -z "$RECS" ]; then RECS="$rec"; else RECS="$RECS,$rec"; fi
+        N=$((N + 1))
+        [ "$N" -ge 80 ] && break
+      done <<EOF
+$(awk 'NR>1 { print $2, $3, $4 }' "$file")
+EOF
+    }
+
+    while true; do
+      SEEN=""
+      RECS=""
+      N=0
+      if [ -r /host/proc/net/tcp ]; then
+        emit_tcp /host/proc/net/tcp
+      fi
+      post_batch "$RECS" || echo "network collector POST failed" >&2
+      sleep "$INTERVAL"
+    done
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: owlpane-network-collector
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: owlpane-agent, app.kubernetes.io/component: network-collector }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: owlpane-agent
+        app.kubernetes.io/component: network-collector
+    spec:
+      serviceAccountName: {{ include "owlpane.sa" . }}
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: conntrack
+          image: "{{ .Values.networkCollector.image.repository }}:{{ .Values.networkCollector.image.tag }}"
+          imagePullPolicy: {{ .Values.networkCollector.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/emit-flows.sh"]
+          env: {{- include "owlpane.env" . | nindent 12 }}
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: scripts, mountPath: /scripts, readOnly: true }
+            - { name: hostproc, mountPath: /host/proc, readOnly: true }
+          resources: {{- toYaml .Values.networkCollector.resources | nindent 12 }}
+        {{- if .Values.networkCollector.beyla.enabled }}
+        - name: beyla
+          image: "{{ .Values.networkCollector.beyla.image.repository }}:{{ .Values.networkCollector.beyla.image.tag }}"
+          imagePullPolicy: {{ .Values.networkCollector.beyla.image.pullPolicy }}
+          env:
+            - name: OWLPANE_INGEST_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ingestKeySecret.name }}
+                  key: {{ .Values.ingestKeySecret.key }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.endpoint | trimSuffix "/" | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "Authorization=Bearer $(OWLPANE_INGEST_KEY)"
+            - name: BEYLA_NETWORK_METRICS
+              value: "true"
+            - name: BEYLA_KUBE_METADATA_ENABLE
+              value: "true"
+            - name: BEYLA_LOG_LEVEL
+              value: info
+          securityContext:
+            privileged: true
+            readOnlyRootFilesystem: true
+          resources: {{- toYaml .Values.networkCollector.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: scripts
+          configMap: { name: owlpane-network-collector, defaultMode: 0555 }
+        - name: hostproc
+          hostPath: { path: /proc, type: Directory }
+{{- end }}

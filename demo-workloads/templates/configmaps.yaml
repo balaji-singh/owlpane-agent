@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-storefront-nginx
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      location / { return 200 'storefront ok\n'; add_header Content-Type text/plain; }
+      location /healthz { return 200 'ok\n'; }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-api-nginx
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      location / { return 200 'api ok\n'; add_header Content-Type text/plain; }
+      location /v1/ { return 200 '{"status":"ok"}\n'; add_header Content-Type application/json; }
+    }

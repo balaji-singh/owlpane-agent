@@ -1,0 +1,11 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: helm lint . --set endpoint=https://ingest.example.com --set cluster.name=t

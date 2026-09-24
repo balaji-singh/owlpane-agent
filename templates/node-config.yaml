@@ -1,0 +1,80 @@
+{{- if .Values.nodeAgent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-node-agent
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          http: { endpoint: "0.0.0.0:4318" }
+          grpc: { endpoint: "0.0.0.0:4317" }
+      kubelet_stats:
+        auth_type: serviceAccount
+        collection_interval: {{ .Values.nodeAgent.collectionInterval }}
+        endpoint: "https://${env:K8S_NODE_NAME}:10250"
+        insecure_skip_verify: {{ .Values.nodeAgent.kubeletInsecureSkipVerify }}
+        metric_groups: [node, pod, container]
+      {{- if .Values.logs.enabled }}
+      filelog:
+        include: [/var/log/pods/*/*/*.log]
+        exclude:
+          {{- range .Values.logs.excludeNamespaces }}
+          - /var/log/pods/{{ . }}_*/*/*.log
+          {{- end }}
+        include_file_path: true
+        operators:
+          - type: container
+      {{- end }}
+    processors:
+      memory_limiter: { check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20 }
+      {{- include "owlpane.k8sattributes" . | nindent 6 }}
+      resource:
+        attributes:
+          - { key: k8s.cluster.name, value: {{ .Values.cluster.name | quote }}, action: upsert }
+          - { key: service.name, value: "kubernetes-node", action: insert }
+          - { key: deployment.environment.name, value: {{ .Values.environment | quote }}, action: insert }
+      # Never forward what identifies a person or carries a credential.
+      attributes/scrub:
+        actions:
+          - { key: http.request.header.authorization, action: delete }
+          - { key: http.request.header.cookie, action: delete }
+          - { key: url.query, action: delete }
+      {{- if .Values.redaction.enabled }}
+      {{- include "owlpane.redact" . | nindent 6 }}
+      {{- end }}
+      batch: { send_batch_size: 2000, timeout: 5s }
+    {{- if .Values.redaction.enabled }}
+    connectors:
+      {{- include "owlpane.redactionCounter" . | nindent 6 }}
+    {{- end }}
+    exporters:
+      {{- include "owlpane.exporter" . | nindent 6 }}
+    extensions:
+      health_check: { endpoint: "0.0.0.0:13133" }
+    service:
+      extensions: [health_check]
+      telemetry: { metrics: { level: none } }
+      pipelines:
+        metrics:
+          receivers: [otlp, kubelet_stats]
+          processors: [memory_limiter, k8s_attributes, resource, batch]
+          exporters: [otlp_http]
+        {{- if .Values.redaction.enabled }}
+        metrics/redaction:
+          receivers: [count]
+          processors: [batch]
+          exporters: [otlp_http]
+        {{- end }}
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8s_attributes, resource, attributes/scrub{{ if .Values.redaction.enabled }}, transform/scrub_urls, transform/redact{{ end }}, batch]
+          exporters: [otlp_http{{ if .Values.redaction.enabled }}, count{{ end }}]
+        logs:
+          receivers: [otlp{{ if .Values.logs.enabled }}, filelog{{ end }}]
+          processors: [memory_limiter, k8s_attributes, resource, attributes/scrub{{ if .Values.redaction.enabled }}, transform/scrub_urls, transform/redact{{ end }}, batch]
+          exporters: [otlp_http{{ if .Values.redaction.enabled }}, count{{ end }}]
+{{- end }}

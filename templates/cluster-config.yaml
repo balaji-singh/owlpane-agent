@@ -1,0 +1,83 @@
+{{- if .Values.clusterCollector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-cluster-collector
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    receivers:
+      k8s_cluster:
+        auth_type: serviceAccount
+        collection_interval: 30s
+        node_conditions_to_report: [Ready, MemoryPressure, DiskPressure, PIDPressure]
+        allocatable_types_to_report: [cpu, memory]
+        # Why containers restart or wait: OOMKilled, Error, CrashLoopBackOff, ImagePullBackOff and so on.
+        metrics:
+          k8s.container.status.state: { enabled: true }
+          k8s.container.status.reason: { enabled: true }
+      {{- if .Values.clusterCollector.events }}
+      k8s_objects:
+        auth_type: serviceAccount
+        objects:
+          - { name: events, mode: watch, group: events.k8s.io }
+          {{- if .Values.clusterCollector.objectSnapshots }}
+          - { name: services, mode: watch, group: "" }
+          - { name: ingresses, mode: watch, group: networking.k8s.io }
+          - { name: deployments, mode: watch, group: apps }
+          - { name: statefulsets, mode: watch, group: apps }
+          - { name: daemonsets, mode: watch, group: apps }
+          {{- if .Values.clusterCollector.watchPods }}
+          - { name: pods, mode: watch, group: "" }
+          {{- end }}
+          {{- if .Values.clusterCollector.watchCertManager }}
+          - { name: certificates, mode: watch, group: cert-manager.io }
+          {{- end }}
+          {{- if .Values.clusterCollector.watchGatewayApi }}
+          - { name: gateways, mode: watch, group: gateway.networking.k8s.io }
+          - { name: httproutes, mode: watch, group: gateway.networking.k8s.io }
+          {{- end }}
+          {{- if .Values.clusterCollector.watchSecurityPosture }}
+          - { name: namespaces, mode: watch, group: "" }
+          - { name: limitranges, mode: watch, group: "" }
+          - { name: resourcequotas, mode: watch, group: "" }
+          - { name: networkpolicies, mode: watch, group: networking.k8s.io }
+          - { name: roles, mode: watch, group: rbac.authorization.k8s.io }
+          - { name: rolebindings, mode: watch, group: rbac.authorization.k8s.io }
+          - { name: clusterroles, mode: watch, group: rbac.authorization.k8s.io }
+          - { name: clusterrolebindings, mode: watch, group: rbac.authorization.k8s.io }
+          {{- end }}
+          {{- if and .Values.clusterCollector.watchSecurityPosture .Values.securityIntegrations.policyReports.enabled }}
+          - { name: policyreports, mode: watch, group: wgpolicyk8s.io }
+          - { name: clusterpolicyreports, mode: watch, group: wgpolicyk8s.io }
+          {{- end }}
+          {{- end }}
+      {{- end }}
+    processors:
+      memory_limiter: { check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 20 }
+      resource:
+        attributes:
+          - { key: k8s.cluster.name, value: {{ .Values.cluster.name | quote }}, action: upsert }
+          - { key: deployment.environment.name, value: {{ .Values.environment | quote }}, action: insert }
+          - { key: service.name, value: "kubernetes-cluster", action: insert }
+      batch: { send_batch_size: 1000, timeout: 10s }
+    exporters:
+      {{- include "owlpane.exporter" . | nindent 6 }}
+    extensions:
+      health_check: { endpoint: "0.0.0.0:13133" }
+    service:
+      extensions: [health_check]
+      telemetry: { metrics: { level: none } }
+      pipelines:
+        metrics:
+          receivers: [k8s_cluster]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlp_http]
+        {{- if .Values.clusterCollector.events }}
+        logs:
+          receivers: [k8s_objects]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlp_http]
+        {{- end }}
+{{- end }}

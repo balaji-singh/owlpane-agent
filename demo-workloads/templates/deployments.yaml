@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-storefront
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: demo-storefront
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.storefront }}
+  selector:
+    matchLabels:
+      app: demo-storefront
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: demo-storefront
+        tier: frontend
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: nginx
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts:
+            - { name: cfg, mountPath: /etc/nginx/conf.d }
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: cfg
+          configMap: { name: demo-storefront-nginx }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: demo-api
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      app: demo-api
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: demo-api
+        tier: backend
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: nginx
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ containerPort: 8080, name: http }]
+          env:
+            - name: DEMO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.appSecret.name }}
+                  key: apiKey
+          volumeMounts:
+            - { name: cfg, mountPath: /etc/nginx/conf.d }
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: cfg
+          configMap: { name: demo-api-nginx }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-worker
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: demo-worker
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      app: demo-worker
+      {{- include "owlpane-demo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: demo-worker
+        tier: worker
+        {{- include "owlpane-demo.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.chaos.unhealthyWorker }}
+          command: ["/bin/sh", "-c", "exit 1"]
+          {{- else }}
+          command: ["/bin/sh", "-c", "while true; do sleep 30; done"]
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

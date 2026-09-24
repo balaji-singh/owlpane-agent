@@ -1,0 +1,10 @@
+apiVersion: v2
+name: owlpane-agent
+description: Kubernetes agent for Owlpane. Collects node, pod and cluster telemetry with OpenTelemetry and sends it to your Owlpane ingest gateway.
+type: application
+version: 0.1.0
+appVersion: "0.161.0"
+dependencies:
+  - name: security-integrations
+    version: "0.1.0"
+    condition: securityIntegrations.enabled

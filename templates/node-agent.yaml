@@ -1,0 +1,61 @@
+{{- if .Values.nodeAgent.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: owlpane-node-agent
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: owlpane-agent, app.kubernetes.io/component: node }
+  updateStrategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 1 } }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: owlpane-agent
+        app.kubernetes.io/component: node
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/node-config.yaml") . | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ include "owlpane.sa" . }}
+      automountServiceAccountToken: true
+      priorityClassName: system-node-critical
+      tolerations: {{- toYaml .Values.nodeAgent.tolerations | nindent 8 }}
+      securityContext:
+        {{- if .Values.logs.enabled }}
+        runAsUser: 0
+        {{- else }}
+        runAsNonRoot: true
+        runAsUser: 10001
+        {{- end }}
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config=/conf/config.yaml"]
+          env: {{- include "owlpane.env" . | nindent 12 }}
+          ports:
+            - { name: otlp-http, containerPort: 4318{{ if .Values.nodeAgent.otlpHostPort }}, hostPort: 4318{{ end }} }
+            - { name: otlp-grpc, containerPort: 4317{{ if .Values.nodeAgent.otlpHostPort }}, hostPort: 4317{{ end }} }
+          readinessProbe: { httpGet: { path: /, port: 13133 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /, port: 13133 }, periodSeconds: 20, initialDelaySeconds: 15 }
+          resources: {{- toYaml .Values.nodeAgent.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: conf, mountPath: /conf, readOnly: true }
+            {{- if .Values.logs.enabled }}
+            - { name: varlogpods, mountPath: /var/log/pods, readOnly: true }
+            - { name: varlibdocker, mountPath: /var/lib/docker/containers, readOnly: true }
+            {{- end }}
+      volumes:
+        - name: conf
+          configMap: { name: owlpane-node-agent }
+        {{- if .Values.logs.enabled }}
+        - { name: varlogpods, hostPath: { path: /var/log/pods } }
+        - { name: varlibdocker, hostPath: { path: /var/lib/docker/containers } }
+        {{- end }}
+{{- end }}

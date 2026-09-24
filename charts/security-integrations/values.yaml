@@ -1,0 +1,8 @@
+trivyOperator:
+  enabled: false
+policyReports:
+  enabled: false
+otlpEndpoint: ""
+ingestKeySecret:
+  name: owlpane-ingest
+  key: key

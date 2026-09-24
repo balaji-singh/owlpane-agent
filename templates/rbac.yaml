@@ -1,0 +1,59 @@
+{{- include "owlpane.require" . -}}
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "owlpane.sa" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+{{- end }}
+{{- if .Values.rbac.create }}
+---
+# Read-only. Deliberately NOT granted: secrets, configmaps, pods/exec, pods/log, any write verb, or
+# any resource beyond what is listed. test-rbac.sh enforces this on every change.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/stats, nodes/proxy, namespaces, pods, services, endpoints, replicationcontrollers, resourcequotas, persistentvolumeclaims, events, limitranges]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+    verbs: [get, list, watch]
+  - apiGroups: [wgpolicyk8s.io]
+    resources: [policyreports, clusterpolicyreports]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways, httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [cert-manager.io]
+    resources: [certificates]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }} }
+subjects:
+  - { kind: ServiceAccount, name: {{ include "owlpane.sa" . }}, namespace: {{ .Release.Namespace }} }
+{{- end }}

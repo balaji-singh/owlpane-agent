@@ -1,0 +1,140 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- if .Values.networkPolicy.defaultDenyIngress }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-default-deny-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-allow-ingress-controller
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      tier: frontend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-allow-api-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- if .Values.networkPolicy.allowApiToStorefront }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-api-egress-to-storefront
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-api
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: demo-storefront
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- $dbOn := or .Values.databases.postgres.enabled .Values.databases.mysql.enabled .Values.databases.mongodb.enabled .Values.databases.redis.enabled }}
+{{- if and .Values.networkPolicy.enabled $dbOn (gt (len .Values.networkPolicy.allowDatabaseMetricsFromNamespaces) 0) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-allow-database-metrics
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: owlpane.io/demo-database
+        operator: Exists
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range .Values.networkPolicy.allowDatabaseMetricsFromNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 3306
+        - protocol: TCP
+          port: 27017
+        - protocol: TCP
+          port: 6379
+{{- end }}
+{{- $mqOn := or .Values.messaging.kafka.enabled .Values.messaging.rabbitmq.enabled }}
+{{- if and .Values.networkPolicy.enabled $mqOn (gt (len .Values.networkPolicy.allowDatabaseMetricsFromNamespaces) 0) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-allow-messaging-metrics
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: owlpane.io/demo-messaging
+        operator: Exists
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range .Values.networkPolicy.allowDatabaseMetricsFromNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 15672
+{{- end }}
+{{- end }}

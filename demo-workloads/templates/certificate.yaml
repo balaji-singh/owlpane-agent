@@ -1,0 +1,18 @@
+{{- if .Values.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.certManager.certificateName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "owlpane-demo.labels" . | nindent 4 }}
+  annotations:
+    {{- include "owlpane-demo.helmAnnotations" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.ingress.tls.secretName }}
+  issuerRef:
+    name: {{ .Values.certManager.issuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.host | quote }}
+{{- end }}

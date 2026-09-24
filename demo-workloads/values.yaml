@@ -1,0 +1,141 @@
+# Install into your cluster only. Owlpane console discovers objects via the agent — nothing here is hardcoded in SaaS.
+
+createNamespace: true
+namespace: owlpane-demo
+
+# Helm release metadata on workloads (Platform tab → Helm releases)
+release:
+  name: "" # defaults to Helm release name
+
+image:
+  repository: nginxinc/nginx-unprivileged
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+replicaCount:
+  storefront: 2
+  api: 2
+  worker: 1
+
+# Fake app credentials (Kubernetes Secret — agent does not read Secret data)
+appSecret:
+  enabled: true
+  name: demo-app-credentials
+
+ingress:
+  enabled: true
+  className: nginx
+  host: demo.local
+  tls:
+    enabled: false
+    secretName: demo-tls
+
+# cert-manager Certificate (CRD must exist; enable watchCertManager on owlpane-agent)
+certManager:
+  enabled: false
+  issuer: selfsigned-issuer
+  certificateName: demo-tls-cert
+
+# Gateway API (optional; enable watchGatewayApi on owlpane-agent)
+gatewayApi:
+  enabled: false
+  gatewayName: demo-gateway
+  hostname: demo.gateway.local
+
+networkPolicy:
+  enabled: true
+  # Namespace-wide default deny ingress (except DNS) — exercises Security + Network tabs
+  defaultDenyIngress: true
+  allowApiToStorefront: true
+  # Namespaces allowed to scrape demo DB ports (owlpane-agent integrations). Set by install script when OWLPANE_DEMO_DATABASES=true.
+  allowDatabaseMetricsFromNamespaces: []
+
+# Public LoadBalancer Service (exposure findings when cloud LB exists)
+publicService:
+  enabled: false
+  name: storefront-public
+
+chaos:
+  # One CrashLoop pod in worker Deployment for Events / unhealthy pod UI
+  unhealthyWorker: false
+
+# Optional databases for Infrastructure → Databases onboarding tests (dev clusters only).
+databases:
+  postgres:
+    enabled: false
+    serviceName: demo-postgres
+    secretName: demo-postgres-credentials
+    port: 5432
+    database: demo
+    username: demo
+    password: demo
+    image: { repository: postgres, tag: "16-alpine", pullPolicy: IfNotPresent }
+  mysql:
+    enabled: false
+    serviceName: demo-mysql
+    secretName: demo-mysql-credentials
+    port: 3306
+    database: demo
+    username: demo
+    password: demo
+    rootPassword: demo-root
+    image: { repository: mysql, tag: "8.4", pullPolicy: IfNotPresent }
+  mongodb:
+    enabled: false
+    serviceName: demo-mongodb
+    secretName: demo-mongodb-credentials
+    port: 27017
+    username: demo
+    password: demo
+    image: { repository: mongo, tag: "7", pullPolicy: IfNotPresent }
+  redis:
+    enabled: false
+    serviceName: demo-redis
+    port: 6379
+    image: { repository: redis, tag: "7-alpine", pullPolicy: IfNotPresent }
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+messaging:
+  kafka:
+    enabled: false
+    serviceName: demo-kafka
+    port: 9092
+    image: { repository: bitnami/kafka, tag: "3.7.0", pullPolicy: IfNotPresent }
+  rabbitmq:
+    enabled: false
+    serviceName: demo-rabbitmq
+    secretName: demo-rabbitmq-credentials
+    port: 5672
+    managementPort: 15672
+    username: demo
+    password: demo
+    image: { repository: rabbitmq, tag: "3.13-management", pullPolicy: IfNotPresent }
+  resources:
+    requests: { cpu: 50m, memory: 384Mi }
+    limits: { memory: 768Mi }
+
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits: { memory: 64Mi }
+
+# Synthetic L3/L4 flows for Kubernetes → Network (Flows, Map overlay). Posts OTLP logs to your ingest URL.
+flowForwarder:
+  enabled: false
+  # Must match owlpane-agent cluster.name and your console cluster selector.
+  clusterName: ""
+  environment: production
+  # e.g. http://host.docker.internal:4318 or https://ingest.example.com (no /v1/logs suffix)
+  otlpEndpoint: ""
+  intervalSeconds: 30
+  ingestKeySecret:
+    name: owlpane-ingest
+    key: key
+  image:
+    repository: curlimages/curl
+    tag: "8.11.1"
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 5m, memory: 16Mi }
+    limits: { memory: 32Mi }
