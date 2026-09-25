@@ -14,7 +14,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }}
+  name: {{ include "owlpane.rbacId" . }}-{{ .Release.Namespace }}
   labels: {{- include "owlpane.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
@@ -51,9 +51,9 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }}
+  name: {{ include "owlpane.rbacId" . }}-{{ .Release.Namespace }}
   labels: {{- include "owlpane.labels" . | nindent 4 }}
-roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "owlpane.name" . }}-{{ .Release.Namespace }} }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ include "owlpane.rbacId" . }}-{{ .Release.Namespace }} }
 subjects:
   - { kind: ServiceAccount, name: {{ include "owlpane.sa" . }}, namespace: {{ .Release.Namespace }} }
 {{- end }}

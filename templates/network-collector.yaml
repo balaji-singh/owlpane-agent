@@ -9,7 +9,8 @@ metadata:
 data:
   emit-flows.sh: |
     #!/bin/sh
-    set -eu
+    # No `set -e`: a parsing step that finds nothing (for example zero slow-path counters) must not end the collector.
+    set -u
     CLUSTER="{{ .Values.cluster.name }}"
     ENV="{{ .Values.environment }}"
     ENDPOINT="{{ .Values.endpoint | trimSuffix "/" }}/v1/logs"
@@ -137,15 +138,18 @@ metadata:
   labels: {{- include "owlpane.labels" . | nindent 4 }}
 spec:
   selector:
-    matchLabels: { app.kubernetes.io/name: owlpane-agent, app.kubernetes.io/component: network-collector }
+    matchLabels: { app.kubernetes.io/name: {{ include "owlpane.appName" . }}, app.kubernetes.io/component: network-collector }
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: owlpane-agent
+        app.kubernetes.io/name: {{ include "owlpane.appName" . }}
         app.kubernetes.io/component: network-collector
     spec:
       serviceAccountName: {{ include "owlpane.sa" . }}
       hostNetwork: true
+      {{- if and .Values.networkCollector.beyla.enabled .Values.networkCollector.beyla.applicationSpans.enabled }}
+      hostPID: true
+      {{- end }}
       dnsPolicy: ClusterFirstWithHostNet
       tolerations:
         - operator: Exists
@@ -184,12 +188,18 @@ spec:
               value: "true"
             - name: BEYLA_KUBE_METADATA_ENABLE
               value: "true"
+            - name: BEYLA_KUBE_CLUSTER_NAME
+              value: {{ .Values.cluster.name | quote }}
+            {{- if .Values.networkCollector.beyla.applicationSpans.enabled }}
+            - name: BEYLA_OPEN_PORT
+              value: {{ .Values.networkCollector.beyla.applicationSpans.openPorts | quote }}
+            {{- end }}
             - name: BEYLA_LOG_LEVEL
               value: info
           securityContext:
             privileged: true
             readOnlyRootFilesystem: true
-          resources: {{- toYaml .Values.networkCollector.resources | nindent 12 }}
+          resources: {{- toYaml .Values.networkCollector.beyla.resources | nindent 12 }}
         {{- end }}
       volumes:
         - name: scripts

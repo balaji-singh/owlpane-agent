@@ -1,4 +1,6 @@
-# owlpane-agent
+# Owlpane Kubernetes agent
+
+Helm chart **`owlpane-agent`** (OCI). Install the release as **`owlpane`** in namespace **`owlpane`** — same brand as the Owlpane SaaS and `@owlpane/*` SDKs.
 
 Sends Kubernetes node, pod, container and cluster telemetry to your Owlpane ingest gateway using
 OpenTelemetry. Status: **alpha**. Tested on a real (kind) cluster: pods run, kubelet and cluster-state
@@ -9,7 +11,7 @@ metrics arrive with `k8s.cluster.name` and your project key.
 ```bash
 kubectl create namespace owlpane
 kubectl -n owlpane create secret generic owlpane-ingest --from-literal=key=owl_ing_YOUR_KEY
-helm install owlpane-agent oci://ghcr.io/balaji-singh/owlpane-agent --version 0.1.2 -n owlpane \
+helm install owlpane oci://ghcr.io/balaji-singh/owlpane-agent --version 0.1.3 -n owlpane \
   --set endpoint=https://ingest.example.com --set cluster.name=production-eu
 ```
 
@@ -66,4 +68,4 @@ Namespace capture filters are not applied by the conntrack loop (it is node-scop
 
 ## Uninstall
 
-`helm uninstall owlpane-agent -n owlpane` removes everything the chart created.
+`helm uninstall owlpane -n owlpane` removes everything the chart created.

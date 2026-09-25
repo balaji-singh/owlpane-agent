@@ -1,7 +1,9 @@
-{{- define "owlpane.name" -}}owlpane-agent{{- end -}}
-{{- define "owlpane.sa" -}}{{ if .Values.serviceAccount.name }}{{ .Values.serviceAccount.name }}{{ else }}owlpane-agent{{ end }}{{- end -}}
+{{- define "owlpane.appName" -}}owlpane{{- end -}}
+{{- define "owlpane.rbacId" -}}owlpane-agent{{- end -}}
+{{- define "owlpane.sa" -}}{{ if .Values.serviceAccount.name }}{{ .Values.serviceAccount.name }}{{ else }}{{ include "owlpane.rbacId" . }}{{ end }}{{- end -}}
 {{- define "owlpane.labels" -}}
-app.kubernetes.io/name: owlpane-agent
+app.kubernetes.io/name: {{ include "owlpane.appName" . }}
+app.kubernetes.io/part-of: owlpane
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
