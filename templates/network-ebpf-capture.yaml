@@ -1,0 +1,51 @@
+{{- if and .Values.networkCollector.enabled .Values.networkCollector.ebpfCapture.enabled }}
+{{- include "owlpane.require" . }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: owlpane-network-ebpf-capture
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: owlpane-agent, app.kubernetes.io/component: network-ebpf-capture }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: owlpane-agent
+        app.kubernetes.io/component: network-ebpf-capture
+    spec:
+      serviceAccountName: {{ include "owlpane.sa" . }}
+      hostNetwork: {{ .Values.networkCollector.ebpfCapture.hostNetwork }}
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: ebpf-capture
+          image: "{{ .Values.networkCollector.ebpfCapture.image.repository }}:{{ .Values.networkCollector.ebpfCapture.image.tag }}"
+          imagePullPolicy: {{ .Values.networkCollector.ebpfCapture.image.pullPolicy }}
+          env: {{- include "owlpane.env" . | nindent 12 }}
+            - name: OWLPANE_EBPF_DELAYED_DISSECTION
+              value: {{ .Values.networkCollector.ebpfCapture.delayedDissection | quote }}
+            - name: OWLPANE_CAPTURE_NAMESPACES
+              value: {{ join "," .Values.networkCollector.captureFilters.namespaces | quote }}
+            - name: OWLPANE_CAPTURE_TARGET_PODS
+              value: {{ join "," .Values.networkCollector.captureFilters.targetPods | quote }}
+          securityContext:
+            privileged: {{ .Values.networkCollector.ebpfCapture.privileged }}
+            readOnlyRootFilesystem: true
+          resources: {{- toYaml .Values.networkCollector.resources | nindent 12 }}
+{{- if .Values.networkCollector.tlsDecrypt.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: owlpane-network-tls-decrypt-guard
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "owlpane.labels" . | nindent 4 }}
+data:
+  README: |
+    tlsDecrypt.enabled is true but Owlpane does not ship uprobes in-chart.
+    Set OWLPANE_TLS_DECRYPT_ACCEPTED=1 on the API cell and complete ADR-0009 review before any decrypt workload.
+{{- end }}
+{{- end }}
