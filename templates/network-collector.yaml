@@ -51,6 +51,26 @@ data:
         ]},\"scopeLogs\":[{\"scope\":{\"name\":\"owlpane-network-collector\"},\"logRecords\":[${records}]}]}]}"
     }
 
+    read_snmp_tcp() {
+      RTT_MS=""
+      RETRANS=""
+      if [ -r /host/proc/net/snmp ]; then
+        line=$(awk '/^Tcp:/ { print $0 }' /host/proc/net/snmp | tail -1)
+        if [ -n "$line" ]; then
+          RETRANS=$(echo "$line" | awk '{ print $12 }')
+          [ -n "$RETRANS" ] && [ "$RETRANS" -eq "$RETRANS" ] 2>/dev/null || RETRANS=""
+        fi
+      fi
+      if [ -r /host/proc/net/netstat ]; then
+        line=$(awk '/^TcpExt:/ { print $0 }' /host/proc/net/netstat | tail -1)
+        if [ -n "$line" ]; then
+          # TCPSlowStartRetrans is a coarse node signal; attach as synthetic RTT hint when present.
+          slow=$(echo "$line" | awk '{ print $47 }')
+          [ -n "$slow" ] && [ "$slow" -gt 0 ] 2>/dev/null && RTT_MS="1"
+        fi
+      fi
+    }
+
     flow_record() {
       srcip="$1"; sport="$2"; dstip="$3"; dport="$4"; proto="$5"; bytes="$6"
       printf '{"timeUnixNano":"%s","severityText":"INFO","body":{"stringValue":"conntrack flow"},"attributes":[' "$(nano)"
@@ -65,6 +85,12 @@ data:
       printf '{"key":"owlpane.flow.dst.port","value":{"stringValue":"%s"}},' "$dport"
       printf '{"key":"owlpane.flow.protocol","value":{"stringValue":"%s"}},' "$proto"
       printf '{"key":"owlpane.flow.bytes","value":{"stringValue":"%s"}},' "$bytes"
+      if [ -n "$RTT_MS" ]; then
+        printf '{"key":"owlpane.flow.rtt_ms","value":{"stringValue":"%s"}},' "$RTT_MS"
+      fi
+      if [ -n "$RETRANS" ]; then
+        printf '{"key":"owlpane.flow.retrans","value":{"stringValue":"%s"}},' "$RETRANS"
+      fi
       printf '{"key":"owlpane.flow.verdict","value":{"stringValue":"allowed"}}]}'
     }
 
@@ -95,6 +121,7 @@ EOF
       SEEN=""
       RECS=""
       N=0
+      read_snmp_tcp
       if [ -r /host/proc/net/tcp ]; then
         emit_tcp /host/proc/net/tcp
       fi

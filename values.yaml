@@ -109,8 +109,9 @@ networkCollector:
     pullPolicy: IfNotPresent
   intervalSeconds: 30
   captureFilters:
-    namespaces: []   # documented for Beyla; conntrack is node-scoped
-    ports: []
+    namespaces: []   # Beyla / eBPF: limit K8s metadata to these namespaces (empty = all)
+    ports: []        # conntrack: only emit flows with remote port in this list (empty = all)
+    targetPods: []   # eBPF: optional pod name prefixes (empty = all pods on node)
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
@@ -122,6 +123,18 @@ networkCollector:
       repository: grafana/beyla
       tag: "2.2.4"
       pullPolicy: IfNotPresent
+  # P2 parity: privileged CO-RE eBPF capture (ADR 0009). Not enabled until images ship.
+  ebpfCapture:
+    enabled: false
+    privileged: true
+    hostNetwork: true
+    delayedDissection: false
+    image:
+      repository: ghcr.io/owlpane/network-ebpf
+      tag: "0.1.0"
+      pullPolicy: IfNotPresent
+  tlsDecrypt:
+    enabled: false  # P3 — requires ADR-0009 security acceptance; never enable by default
 
 integrations:
   enabled: false
