@@ -28,6 +28,16 @@ spec:
           image: "{{ .Values.networkCollector.ebpfCapture.image.repository }}:{{ .Values.networkCollector.ebpfCapture.image.tag }}"
           imagePullPolicy: {{ .Values.networkCollector.ebpfCapture.image.pullPolicy }}
           env: {{- include "owlpane.env" . | nindent 12 }}
+            - name: OWLPANE_INGEST_ENDPOINT
+              value: {{ .Values.endpoint | trimSuffix "/" | quote }}
+            - name: OWLPANE_CLUSTER_NAME
+              value: {{ .Values.cluster.name | quote }}
+            - name: OWLPANE_ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: OWLPANE_EMIT_INTERVAL
+              value: {{ .Values.networkCollector.intervalSeconds | quote }}
+            - name: OWLPANE_CAPTURE_PORTS
+              value: {{ join " " .Values.networkCollector.captureFilters.ports | quote }}
             - name: OWLPANE_EBPF_DELAYED_DISSECTION
               value: {{ .Values.networkCollector.ebpfCapture.delayedDissection | quote }}
             - name: OWLPANE_CAPTURE_NAMESPACES
@@ -37,7 +47,12 @@ spec:
           securityContext:
             privileged: {{ .Values.networkCollector.ebpfCapture.privileged }}
             readOnlyRootFilesystem: true
+          volumeMounts:
+            - { name: hostproc, mountPath: /host/proc, readOnly: true }
           resources: {{- toYaml .Values.networkCollector.resources | nindent 12 }}
+      volumes:
+        - name: hostproc
+          hostPath: { path: /proc, type: Directory }
 {{- if .Values.networkCollector.tlsDecrypt.enabled }}
 ---
 apiVersion: v1
