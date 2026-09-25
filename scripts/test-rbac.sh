@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fails if the agent's ClusterRole ever gains a write verb or access to secrets/configmaps/exec/logs.
 set -euo pipefail
-cd "$(dirname "$0")"
-ROOT="$(cd ../.. && pwd)"
+cd "$(dirname "$0")/.."   # the chart is this repository's root (it was deploy/helm/owlpane-agent in the monorepo)
+ROOT="$(pwd)"
 PYTHON=python3
 if ! python3 -c "import yaml" 2>/dev/null; then
   VENV="$ROOT/scripts/.helm-test-venv"
@@ -12,11 +12,10 @@ if ! python3 -c "import yaml" 2>/dev/null; then
   fi
   PYTHON="$VENV/bin/python3"
 fi
-helm lint owlpane-agent --set endpoint=https://ingest.example.com --set cluster.name=t >/dev/null
-helm lint owlpane-api --set existingSecret=owlpane-api-env --set image.tag=ci >/dev/null
-helm lint owlpane-ingest --set existingSecret=owlpane-ingest-env --set image.tag=ci >/dev/null
+helm lint . --set endpoint=https://ingest.example.com --set cluster.name=t >/dev/null
+# (The owlpane-api and owlpane-ingest charts are linted in their own repositories now.)
 OUT="$(mktemp)"; trap 'rm -f "$OUT"' EXIT
-helm template t owlpane-agent -n owlpane --set endpoint=https://ingest.example.com --set cluster.name=t --set logs.enabled=true --set networkPolicy.enabled=true --set integrations.enabled=true --set 'integrations.redis[0].name=c' --set 'integrations.redis[0].endpoint=c:6379' > "$OUT"
+helm template t . -n owlpane --set endpoint=https://ingest.example.com --set cluster.name=t --set logs.enabled=true --set networkPolicy.enabled=true --set integrations.enabled=true --set 'integrations.redis[0].name=c' --set 'integrations.redis[0].endpoint=c:6379' > "$OUT"
 "$PYTHON" - "$OUT" <<'PY'
 import sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
@@ -60,7 +59,7 @@ PY
 # not know is caught here and not by a crash-looping pod. Needs docker (skipped when it is absent).
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   TMP="$(mktemp -d)"; trap 'rm -rf "$TMP" "$OUT"' EXIT
-  IMG="otel/opentelemetry-collector-contrib:$(grep -E '^appVersion' owlpane-agent/Chart.yaml | tr -d '" ' | cut -d: -f2)"
+  IMG="otel/opentelemetry-collector-contrib:$(grep -E '^appVersion' Chart.yaml | tr -d '" ' | cut -d: -f2)"
   cat > "$TMP/integrations.yaml" <<'YAML'
 integrations:
   enabled: true
@@ -82,7 +81,7 @@ integrations:
   cloudScrapes:
     - { name: aws-metrics, provider: aws, targets: ["yace.default.svc:5000"] }
 YAML
-  helm template t owlpane-agent -n owlpane --set endpoint=https://ingest.example.com --set cluster.name=t --set logs.enabled=true --set nodeAgent.kubeletInsecureSkipVerify=true -f "$TMP/integrations.yaml" > "$TMP/all.yaml"
+  helm template t . -n owlpane --set endpoint=https://ingest.example.com --set cluster.name=t --set logs.enabled=true --set nodeAgent.kubeletInsecureSkipVerify=true -f "$TMP/integrations.yaml" > "$TMP/all.yaml"
   "$PYTHON" - "$TMP" <<'PY'
 import sys, yaml
 tmp = sys.argv[1]

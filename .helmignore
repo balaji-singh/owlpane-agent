@@ -1,0 +1,5 @@
+
+# Test tooling and local environments must never ship inside the chart (a venv made the release too big to store).
+scripts/
+.helm-test-venv/
+*.md
