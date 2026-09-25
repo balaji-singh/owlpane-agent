@@ -137,7 +137,7 @@ networkCollector:
   # data today, use the beyla option above plus OpenTelemetry SDKs, or the Kubeshark forwarder.
   ebpfCapture:
     enabled: false
-    imagePublished: false   # set true only once you have built and pushed your own network-ebpf image and set image.repository
+    imagePublished: true    # ghcr.io/balaji-singh/network-ebpf:0.1.0 (bootstrap; not full CO-RE BPF)
     privileged: true
     hostNetwork: true
     delayedDissection: false
