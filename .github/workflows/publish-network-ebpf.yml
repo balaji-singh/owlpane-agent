@@ -1,0 +1,26 @@
+name: Publish network-ebpf image
+on:
+  push:
+    tags: ["network-ebpf-v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#network-ebpf-v}"
+          IMAGE="ghcr.io/${OWNER}/network-ebpf:${VERSION}"
+          docker build -f images/network-ebpf/Dockerfile -t "$IMAGE" images/network-ebpf
+          docker push "$IMAGE"
+          docker tag "$IMAGE" "ghcr.io/${OWNER}/network-ebpf:latest"
+          docker push "ghcr.io/${OWNER}/network-ebpf:latest"
