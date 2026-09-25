@@ -113,8 +113,8 @@ data:
         N=$((N + 1))
         [ "$N" -ge 80 ] && break
       done <<EOF
-$(awk 'NR>1 { print $2, $3, $4 }' "$file")
-EOF
+    $(awk 'NR>1 { print $2, $3, $4 }' "$file")
+    EOF
     }
 
     while true; do
